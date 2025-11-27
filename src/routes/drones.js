@@ -37,66 +37,14 @@ router.get('/user/:userId',
   getUserDroneSpecs
 );
 
-// src/routes/drones.js → sirf ye route replace kar de
-
+// Get all drone specs (with role-based filtering)
 router.get('/all', 
   authenticateToken, 
   requireRole(['SUPER_ADMIN', 'COMMAND_ADMIN']), 
-  async (req, res) => {
-    try {
-      // Pagination
-      const page = parseInt(req.query.page) || 1;
-      const limit = Math.min(parseInt(req.query.limit) || 100, 5000);
-      const offset = (page - 1) * limit;
-
-      // Optional filters
-      const search = req.query.search ? `%${req.query.search}%` : null;
-      const command = req.query.command || null;
-
-      // Build query
-      let sql = `
-        SELECT ds.*, u.username, u.role, u.command, u.commandName 
-        FROM drone_specs ds
-        JOIN users u ON ds.user_id = u.id
-        WHERE 1=1
-      `;
-      const params = [];
-
-      if (search) {
-        sql += ` AND (ds.droneName LIKE ? OR u.username LIKE ?)`;
-        params.push(search, search);
-      }
-      if (command) {
-        sql += ` AND u.command = ?`;
-        params.push(command);
-      }
-
-      // Count query
-      const countSql = sql.replace('SELECT ds.*, u.username, u.role, u.command, u.commandName', 'SELECT COUNT(*) as total');
-      
-      sql += ` ORDER BY ds.createdAt DESC LIMIT ? OFFSET ?`;
-      params.push(limit, offset);
-
-      const [rows] = await require('../config/database').execute(sql, params);
-      const [[{ total }]] = await require('../config/database').execute(countSql, params);
-
-      res.json({
-        success: true,
-        data: rows,
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit)
-        }
-      });
-
-    } catch (err) {
-      console.error('Drone all error:', err);
-      res.status(500).json({ success: false, message: err.message });
-    }
-  }
+  requireDataCommandAccess(),
+  getAllDroneSpecs
 );
+
 // Get drone specs by command
 router.get('/command/:commandCode', 
   authenticateToken, 
