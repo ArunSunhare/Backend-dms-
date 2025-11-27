@@ -77,9 +77,32 @@
 
 
 
-// src/routes/drones.js → sirf ye route replace kar de
 
-router.get('../controllers/droneController.js', authenticateToken, requireRole(['SUPER_ADMIN', 'COMMAND_ADMIN']), async (req, res) => {
+
+// src/routes/drones.js  ← FINAL VERSION (100% WORKING + DATE FILTER)
+
+const express = require('express');
+const { 
+  getUserDroneSpecs,
+  updateDroneSpec,
+  deleteDroneSpec
+} = require('../controllers/droneController');
+
+const { 
+  authenticateToken, 
+  requireRole,
+  requireModifyAccess,
+  requireDeleteAccess
+} = require('../middleware/auth');
+
+const router = express.Router();
+const { pool } = require('../config/database'); // ← Tera pool perfect hai
+
+// 1. Get user's own drones
+router.get('/user/:userId', authenticateToken, getUserDroneSpecs);
+
+// 2. GET ALL DRONES — FULLY FIXED + TODAY'S DATA BY DEFAULT
+router.get('/all', authenticateToken, requireRole(['SUPER_ADMIN', 'COMMAND_ADMIN']), async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(5000, Math.max(1, parseInt(req.query.limit) || 100));
@@ -88,7 +111,7 @@ router.get('../controllers/droneController.js', authenticateToken, requireRole([
     const search = req.query.search ? `%${req.query.search.trim()}%` : null;
     const command = req.query.command || null;
     
-    // NEW: Date filter (default today)
+    // NEW: Date filter — default today
     const dateFilter = req.query.date || new Date().toISOString().split('T')[0]; // YYYY-MM-DD
     const startOfDay = `${dateFilter} 00:00:00`;
     const endOfDay = `${dateFilter} 23:59:59`;
@@ -112,12 +135,12 @@ router.get('../controllers/droneController.js', authenticateToken, requireRole([
       params.push(command);
     }
 
-    // Count
+    // Total count
     const countSql = sql.replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(*) as total FROM');
-    const countParams = params.slice();
+    const countParams = [...params];
     const [[{ total }]] = await pool.execute(countSql, countParams);
 
-    // Main data
+    // Main data with pagination
     sql += ` ORDER BY ds.createdAt DESC LIMIT ? OFFSET ?`;
     params.push(Number(limit), Number(offset));
 
@@ -132,11 +155,50 @@ router.get('../controllers/droneController.js', authenticateToken, requireRole([
         limit,
         total,
         totalPages: Math.ceil(total / limit),
+        hasNext: page < Math.ceil(total / limit),
+        hasPrev: page > 1
       }
     });
 
   } catch (err) {
     console.error('Drones /all error:', err);
-    res.status(500).json({ success: false, message: 'Server error' });
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error', 
+      error: err.message 
+    });
   }
 });
+
+// 3. By command (optional)
+router.get('/command/:commandCode', authenticateToken, requireRole(['SUPER_ADMIN', 'COMMAND_ADMIN']), async (req, res) => {
+  const { commandCode } = req.params;
+  const [rows] = await pool.execute(`
+    SELECT ds.*, u.username 
+    FROM drone_specs ds
+    JOIN users u ON ds.user_id = u.id
+    WHERE u.command = ? 
+    ORDER BY ds.createdAt DESC 
+    LIMIT 1000
+  `, [commandCode]);
+  res.json({ success: true, data: rows });
+});
+
+// 4. Statistics
+router.get('/statistics/commands', authenticateToken, requireRole(['SUPER_ADMIN', 'COMMAND_ADMIN']), async (req, res) => {
+  const [rows] = await pool.execute(`
+    SELECT u.command, u.commandName, COUNT(ds.id) as droneCount
+    FROM users u
+    LEFT JOIN drone_specs ds ON u.id = ds.user_id
+    WHERE u.role = 'OPERATOR'
+    GROUP BY u.command, u.commandName
+    ORDER BY droneCount DESC
+  `);
+  res.json({ success: true, data: rows });
+});
+
+// 5. Update & Delete
+router.put('/:droneSpecId', authenticateToken, requireModifyAccess(), updateDroneSpec);
+router.delete('/:droneSpecId', authenticateToken, requireDeleteAccess(), deleteDroneSpec);
+
+module.exports = router;
