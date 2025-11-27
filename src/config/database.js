@@ -660,5 +660,6 @@ module.exports = {
     getUserCommandAccess,
     getUsersByCommandAccess,
     getFlightsByCommandAccess,
-    getDroneSpecsByCommandAccess
+    getDroneSpecsByCommandAccess,
+    db: pool   // ← YE ADD KAR DE (ya sirf pool export kar)
 };
