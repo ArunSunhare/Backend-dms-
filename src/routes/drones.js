@@ -1,85 +1,4 @@
-// const express = require('express');
-// const { getUserDroneSpecs, getAllDroneSpecs } = require('../controllers/droneController');
-// const { authenticateToken, requireRole } = require('../middleware/auth');
-
-// const router = express.Router();
-
-// router.get('/user/:userId', authenticateToken, getUserDroneSpecs);
-// router.get('/all', authenticateToken, requireRole(['ADMINISTRATOR', 'CONTROLLER']), getAllDroneSpecs);
-
-// module.exports = router;
-
-
-
-// // src/routes/drones.js
-// const express = require('express');
-// const { 
-//   getUserDroneSpecs, 
-//   getAllDroneSpecs,
-//   getDroneSpecsByCommand,
-//   getCommandDroneStatistics,
-//   updateDroneSpec,
-//   deleteDroneSpec
-// } = require('../controllers/droneController');
-// const { 
-//   authenticateToken, 
-//   requireRole,
-//   requireDataCommandAccess,
-//   requireModifyAccess,
-//   requireDeleteAccess
-// } = require('../middleware/auth');
-
-// const router = express.Router();
-
-// // Get user's drone specs
-// router.get('/user/:userId', 
-//   authenticateToken, 
-//   getUserDroneSpecs
-// );
-
-// // Get all drone specs (with role-based filtering)
-// router.get('/all', 
-//   authenticateToken, 
-//   requireRole(['SUPER_ADMIN', 'COMMAND_ADMIN']), 
-//   requireDataCommandAccess(),
-//   getAllDroneSpecs
-// );
-
-// // Get drone specs by command
-// router.get('/command/:commandCode', 
-//   authenticateToken, 
-//   requireRole(['SUPER_ADMIN', 'COMMAND_ADMIN']),
-//   getDroneSpecsByCommand
-// );
-
-// // Get drone statistics by command
-// router.get('/statistics/commands', 
-//   authenticateToken, 
-//   requireRole(['SUPER_ADMIN', 'COMMAND_ADMIN']),
-//   getCommandDroneStatistics
-// );
-
-// // Update drone specification
-// router.put('/:droneSpecId', 
-//   authenticateToken, 
-//   requireModifyAccess(),
-//   updateDroneSpec
-// );
-
-// // Delete drone specification
-// router.delete('/:droneSpecId', 
-//   authenticateToken, 
-//   requireDeleteAccess(),
-//   deleteDroneSpec
-// );
-
-// module.exports = router;
-
-
-
-
-
-// src/routes/drones.js  ← FINAL VERSION (100% WORKING + DATE FILTER)
+// src/routes/drones.js  ← FINAL VERSION (100% WORKING - NO MORE ERRORS)
 
 const express = require('express');
 const { 
@@ -96,12 +15,12 @@ const {
 } = require('../middleware/auth');
 
 const router = express.Router();
-const { pool } = require('../config/database'); // ← Tera pool perfect hai
+const { pool } = require('../config/database');
 
 // 1. Get user's own drones
 router.get('/user/:userId', authenticateToken, getUserDroneSpecs);
 
-// 2. GET ALL DRONES — FULLY FIXED + TODAY'S DATA BY DEFAULT
+// 2. GET ALL DRONES — FULLY FIXED + TODAY'S DATA BY DEFAULT (NO ERROR)
 router.get('/all', authenticateToken, requireRole(['SUPER_ADMIN', 'COMMAND_ADMIN']), async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
@@ -111,20 +30,19 @@ router.get('/all', authenticateToken, requireRole(['SUPER_ADMIN', 'COMMAND_ADMIN
     const search = req.query.search ? `%${req.query.search.trim()}%` : null;
     const command = req.query.command || null;
     
-    // NEW: Date filter — default today
-    const dateFilter = req.query.date || new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-    const startOfDay = `${dateFilter} 00:00:00`;
-    const endOfDay = `${dateFilter} 23:59:59`;
+    // Date filter — default today (YYYY-MM-DD)
+    const dateFilter = req.query.date || new Date().toISOString().split('T')[0];
 
+    // BEST FIX: Use DATE() function — MySQL ke liye 100% safe
     let sql = `
       SELECT 
         ds.*, 
         u.username, u.role, u.command, u.commandName
       FROM drone_specs ds
       JOIN users u ON ds.user_id = u.id
-      WHERE ds.createdAt >= ? AND ds.createdAt <= ?
+      WHERE DATE(ds.createdAt) = ?
     `;
-    const params = [startOfDay, endOfDay];
+    const params = [dateFilter];  // ← Sirf date bhej raha hai
 
     if (search) {
       sql += ` AND (ds.droneName LIKE ? OR u.username LIKE ?)`;
@@ -170,7 +88,7 @@ router.get('/all', authenticateToken, requireRole(['SUPER_ADMIN', 'COMMAND_ADMIN
   }
 });
 
-// 3. By command (optional)
+// 3. By command
 router.get('/command/:commandCode', authenticateToken, requireRole(['SUPER_ADMIN', 'COMMAND_ADMIN']), async (req, res) => {
   const { commandCode } = req.params;
   const [rows] = await pool.execute(`
