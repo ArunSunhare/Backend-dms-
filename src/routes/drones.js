@@ -37,72 +37,66 @@ router.get('/user/:userId',
   getUserDroneSpecs
 );
 
-// Get all drone specs (with role-based filtering)
-// src/routes/drones.js  → Sirf yeh route replace kar de
+// src/routes/drones.js → sirf ye route replace kar de
 
-router.get('/all',
-  authenticateToken,
-  requireRole(['SUPER_ADMIN', 'COMMAND_ADMIN']),
-  requireDataCommandAccess(),
+router.get('/all', 
+  authenticateToken, 
+  requireRole(['SUPER_ADMIN', 'COMMAND_ADMIN']), 
   async (req, res) => {
     try {
+      // Pagination
       const page = parseInt(req.query.page) || 1;
-      const limit = Math.min(parseInt(req.query.limit) || 100, 5000); // max 5000 per page
+      const limit = Math.min(parseInt(req.query.limit) || 100, 5000);
       const offset = (page - 1) * limit;
 
-      const search = req.query.search || '';
-      const commandFilter = req.query.command || '';
+      // Optional filters
+      const search = req.query.search ? `%${req.query.search}%` : null;
+      const command = req.query.command || null;
 
-      let query = `
-        SELECT 
-          ds.*, u.username, u.command, u.commandName
+      // Build query
+      let sql = `
+        SELECT ds.*, u.username, u.role, u.command, u.commandName 
         FROM drone_specs ds
         JOIN users u ON ds.user_id = u.id
         WHERE 1=1
       `;
-      let countQuery = `SELECT COUNT(*) as total FROM drone_specs ds JOIN users u ON ds.user_id = u.id WHERE 1=1`;
       const params = [];
-      const countParams = [];
 
       if (search) {
-        query += ` AND (ds.droneName LIKE ? OR u.username LIKE ?)`;
-        countQuery += ` AND (ds.droneName LIKE ? OR u.username LIKE ?)`;
-        const like = `%${search}%`;
-        params.push(like, like);
-        countParams.push(like, like);
+        sql += ` AND (ds.droneName LIKE ? OR u.username LIKE ?)`;
+        params.push(search, search);
+      }
+      if (command) {
+        sql += ` AND u.command = ?`;
+        params.push(command);
       }
 
-      if (commandFilter) {
-        query += ` AND u.command = ?`;
-        countQuery += ` AND u.command = ?`;
-        params.push(commandFilter);
-        countParams.push(commandFilter);
-      }
-
-      query += ` ORDER BY ds.createdAt DESC LIMIT ? OFFSET ?`;
+      // Count query
+      const countSql = sql.replace('SELECT ds.*, u.username, u.role, u.command, u.commandName', 'SELECT COUNT(*) as total');
+      
+      sql += ` ORDER BY ds.createdAt DESC LIMIT ? OFFSET ?`;
       params.push(limit, offset);
 
-      const [rows] = await db.execute(query, params);
-      const [[{ total }]] = await db.execute(countQuery, countParams);
+      const [rows] = await require('../config/database').execute(sql, params);
+      const [[{ total }]] = await require('../config/database').execute(countSql, params);
 
       res.json({
+        success: true,
         data: rows,
         pagination: {
           page,
           limit,
           total,
-          totalPages: Math.ceil(total / limit),
-          hasNext: page < Math.ceil(total / limit),
-          hasPrev: page > 1
+          totalPages: Math.ceil(total / limit)
         }
       });
+
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ success: false, message: "Server error" });
+      console.error('Drone all error:', err);
+      res.status(500).json({ success: false, message: err.message });
     }
   }
 );
-
 // Get drone specs by command
 router.get('/command/:commandCode', 
   authenticateToken, 
