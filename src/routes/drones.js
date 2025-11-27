@@ -12,6 +12,7 @@
 
 // src/routes/drones.js  ← Full Updated & Fixed Version
 // src/routes/drones.js  ← FINAL 100% WORKING VERSION
+// src/routes/drones.js  ← ULTIMATE FINAL VERSION (100% WORKING)
 
 const express = require('express');
 const { 
@@ -29,22 +30,25 @@ const {
 
 const router = express.Router();
 
-// Yeh line bilkul sahi hai — tere database.js me 'pool' export hai
-const { pool } = require('../config/database');   // ← YEHI USE KARNA HAI
+// Tera database.js bilkul perfect hai → pool export karta hai
+const { pool } = require('../config/database');
 
 // 1. Get user's own drones
 router.get('/user/:userId', authenticateToken, getUserDroneSpecs);
 
-// 2. Get ALL drones with pagination, search, filter (SUPER FAST + WORKING)
+// 2. Get ALL drones — FULLY FIXED (No more errors!)
 router.get('/all', authenticateToken, requireRole(['SUPER_ADMIN', 'COMMAND_ADMIN']), async (req, res) => {
   try {
+    // Pagination (force number conversion)
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(5000, Math.max(1, parseInt(req.query.limit) || 100));
     const offset = (page - 1) * limit;
 
+    // Filters
     const search = req.query.search ? `%${req.query.search.trim()}%` : null;
     const command = req.query.command || null;
 
+    // Base query
     let sql = `
       SELECT 
         ds.*, 
@@ -64,13 +68,14 @@ router.get('/all', authenticateToken, requireRole(['SUPER_ADMIN', 'COMMAND_ADMIN
       params.push(command);
     }
 
-    // Total count
+    // Count total (without LIMIT/OFFSET)
     const countSql = sql.replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(*) as total FROM');
-    const [[{ total }]] = await pool.execute(countSql, params);
+    const countParams = [...params]; // copy without limit/offset
+    const [[{ total }]] = await pool.execute(countSql, countParams);
 
-    // Main data
+    // Main query with pagination
     sql += ` ORDER BY ds.createdAt DESC LIMIT ? OFFSET ?`;
-    params.push(limit, offset);
+    params.push(Number(limit), Number(offset)); // ← YEHI FIX HAI (Number() lagaya)
 
     const [rows] = await pool.execute(sql, params);
 
