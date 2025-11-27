@@ -79,7 +79,7 @@
 
 // src/routes/drones.js → sirf ye route replace kar de
 
-router.get('/all', authenticateToken, requireRole(['SUPER_ADMIN', 'COMMAND_ADMIN']), async (req, res) => {
+router.get('../controllers/droneController.js', authenticateToken, requireRole(['SUPER_ADMIN', 'COMMAND_ADMIN']), async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(5000, Math.max(1, parseInt(req.query.limit) || 100));
