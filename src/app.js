@@ -21,7 +21,7 @@ const app = express();
 // Middleware
 // ========================
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'https://frontend-dms.vercel.app/',
+  origin: process.env.FRONTEND_URL || 'http://localhost:8081/',
   credentials: true
 }));
 
